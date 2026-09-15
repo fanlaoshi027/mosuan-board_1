@@ -16,33 +16,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
-
       - name: Generate desktop platform projects
         run: flutter create --platforms=linux .
-
       - name: Remove generated sample test
         run: rm -rf test
-
       - name: Pub get
         run: flutter pub get
-
       - name: Analyze
         run: flutter analyze
-
       - name: Test
         run: |
-          if [ -d test ]; then
-            flutter test
-          else
-            echo "No test directory; skipping tests."
-          fi
+          if [ -d test ]; then flutter test; else echo "No test directory; skipping tests."; fi
 
   build-macos:
     runs-on: macos-latest
@@ -52,40 +42,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
-
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
-
       - name: Generate macOS project
         run: flutter create --platforms=macos .
-
       - name: Pub get
         run: flutter pub get
-
       - name: Build macOS
         run: flutter build macos --release
-
       - name: Create test DMG
         shell: bash
         run: |
-          brew install create-dmg
           mkdir -p build/dmg
-          create-dmg \
-            --volname "墨写测试版" \
-            --window-size 760 420 \
-            --app-drop-link 560 210 \
-            --icon-size 100 \
-            --icon "ink_board.app" 180 210 \
-            "build/dmg/墨写-测试版.dmg" \
-            "build/macos/Build/Products/Release/"
-
+          hdiutil create \
+            -volname "墨写测试版" \
+            -srcfolder "build/macos/Build/Products/Release/" \
+            -ov \
+            -format UDZO \
+            "build/dmg/墨写-测试版.dmg"
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v4
         with:
@@ -102,22 +82,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.4'
           channel: stable
           cache: true
-
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
-
       - name: Generate Windows project
         run: flutter create --platforms=windows .
-
       - name: Pub get
         run: flutter pub get
-
       - name: Build Windows
         run: flutter build windows --release
