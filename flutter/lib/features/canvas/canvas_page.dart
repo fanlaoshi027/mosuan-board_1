@@ -101,30 +101,13 @@ class _CanvasPageState extends State<CanvasPage> {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
             const SizedBox(width: 18),
-            _toolButton(
-              icon: Icons.edit_rounded,
-              label: '画笔',
-              active: _tool == CanvasTool.draw,
-              onPressed: () => _selectPen(_pen, width: _width),
-            ),
-            _toolButton(
-              icon: Icons.straighten_rounded,
-              label: '直线',
-              active: _tool == CanvasTool.line,
-              onPressed: () => setState(() => _tool = CanvasTool.line),
-            ),
-            _toolButton(
-              icon: Icons.auto_fix_normal_rounded,
-              label: '橡皮',
-              active: _tool == CanvasTool.erase,
-              onPressed: () => setState(() => _tool = CanvasTool.erase),
-            ),
-            _toolButton(
-              icon: Icons.ads_click_rounded,
-              label: '选择',
-              active: _tool == CanvasTool.select,
-              onPressed: () => setState(() => _tool = CanvasTool.select),
-            ),
+            _toolButton(icon: Icons.edit_rounded, label: '画笔', active: _tool == CanvasTool.draw, onPressed: () => _selectPen(_pen, width: _width)),
+            _toolButton(icon: Icons.straighten_rounded, label: '直线', active: _tool == CanvasTool.line, onPressed: () => setState(() => _tool = CanvasTool.line)),
+            _toolButton(icon: Icons.auto_fix_normal_rounded, label: '橡皮', active: _tool == CanvasTool.erase, onPressed: () => setState(() => _tool = CanvasTool.erase)),
+            _toolButton(icon: Icons.auto_fix_high_rounded, label: '精细橡皮', active: _tool == CanvasTool.erasePixel, onPressed: () => setState(() => _tool = CanvasTool.erasePixel)),
+            const VerticalDivider(indent: 12, endIndent: 12, width: 18),
+            _toolButton(icon: Icons.ads_click_rounded, label: '选择', active: _tool == CanvasTool.select, onPressed: () => setState(() => _tool = CanvasTool.select)),
+            _toolButton(icon: Icons.gesture_rounded, label: '套索', active: _tool == CanvasTool.lasso, onPressed: () => setState(() => _tool = CanvasTool.lasso)),
             const VerticalDivider(indent: 12, endIndent: 12, width: 18),
             _colorDot(const Color(0xFF202124)),
             _colorDot(const Color(0xFFE53935)),
@@ -137,27 +120,11 @@ class _CanvasPageState extends State<CanvasPage> {
             _widthButton(7),
             _widthButton(10),
             const Spacer(),
-            _statusChip(
-              icon: Icons.gesture_rounded,
-              text: '压感就绪',
-              active: _tool == CanvasTool.draw || _tool == CanvasTool.line,
-            ),
+            _statusChip(icon: Icons.gesture_rounded, text: '压感就绪', active: _tool == CanvasTool.draw || _tool == CanvasTool.line),
             const SizedBox(width: 8),
-            IconButton(
-              tooltip: '撤销',
-              onPressed: () => _canvasKey.currentState?.undo(),
-              icon: const Icon(Icons.undo_rounded, size: 21),
-            ),
-            IconButton(
-              tooltip: '重做',
-              onPressed: () => _canvasKey.currentState?.redo(),
-              icon: const Icon(Icons.redo_rounded, size: 21),
-            ),
-            IconButton(
-              tooltip: '清空',
-              onPressed: () => _canvasKey.currentState?.clear(),
-              icon: const Icon(Icons.delete_outline_rounded, size: 21),
-            ),
+            IconButton(tooltip: '撤销', onPressed: () => _canvasKey.currentState?.undo(), icon: const Icon(Icons.undo_rounded, size: 21)),
+            IconButton(tooltip: '重做', onPressed: () => _canvasKey.currentState?.redo(), icon: const Icon(Icons.redo_rounded, size: 21)),
+            IconButton(tooltip: '清空', onPressed: () => _canvasKey.currentState?.clear(), icon: const Icon(Icons.delete_outline_rounded, size: 21)),
             const SizedBox(width: 4),
           ],
         ),
@@ -185,9 +152,7 @@ class _CanvasPageState extends State<CanvasPage> {
               message: isLeft ? '移到右侧' : '移到左侧',
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: () => setState(() {
-                  _dockSide = isLeft ? _DockSide.right : _DockSide.left;
-                }),
+                onTap: () => setState(() => _dockSide = isLeft ? _DockSide.right : _DockSide.left),
                 child: const Padding(
                   padding: EdgeInsets.only(bottom: 6),
                   child: Icon(Icons.push_pin_rounded, size: 16, color: Colors.white54),
@@ -215,24 +180,15 @@ class _CanvasPageState extends State<CanvasPage> {
           duration: const Duration(milliseconds: 120),
           width: 42,
           height: 42,
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFF315FBE)
-                : Colors.white.withValues(alpha: .05),
-            borderRadius: BorderRadius.circular(13),
-          ),
+          decoration: BoxDecoration(color: selected ? const Color(0xFF315FBE) : Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(13)),
           child: Center(
             child: Container(
               width: preset.kind == PenKind.highlighter ? 27 : 23,
               height: preset.kind == PenKind.highlighter ? 12 : 23,
               decoration: BoxDecoration(
                 color: preset.color.withValues(alpha: preset.opacity),
-                shape: preset.kind == PenKind.highlighter
-                    ? BoxShape.rectangle
-                    : BoxShape.circle,
-                borderRadius: preset.kind == PenKind.highlighter
-                    ? BorderRadius.circular(6)
-                    : null,
+                shape: preset.kind == PenKind.highlighter ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: preset.kind == PenKind.highlighter ? BorderRadius.circular(6) : null,
                 border: Border.all(color: Colors.white24),
               ),
             ),
@@ -242,21 +198,12 @@ class _CanvasPageState extends State<CanvasPage> {
     );
   }
 
-  Widget _toolButton({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required VoidCallback onPressed,
-  }) {
+  Widget _toolButton({required IconData icon, required String label, required bool active, required VoidCallback onPressed}) {
     return Tooltip(
       message: label,
       child: IconButton(
         onPressed: onPressed,
-        style: IconButton.styleFrom(
-          backgroundColor:
-              active ? const Color(0xFF315FBE) : Colors.transparent,
-          foregroundColor: active ? Colors.white : Colors.white70,
-        ),
+        style: IconButton.styleFrom(backgroundColor: active ? const Color(0xFF315FBE) : Colors.transparent, foregroundColor: active ? Colors.white : Colors.white70),
         icon: Icon(icon, size: 20),
       ),
     );
@@ -270,14 +217,7 @@ class _CanvasPageState extends State<CanvasPage> {
       icon: Container(
         width: 18,
         height: 18,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? const Color(0xFF4F8CFF) : Colors.white24,
-            width: selected ? 2.5 : 1,
-          ),
-        ),
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: selected ? const Color(0xFF4F8CFF) : Colors.white24, width: selected ? 2.5 : 1)),
       ),
     );
   }
@@ -294,36 +234,17 @@ class _CanvasPageState extends State<CanvasPage> {
           width: 30,
           height: 32,
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF315FBE) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Container(
-            width: dotSize,
-            height: dotSize,
-            decoration: const BoxDecoration(
-              color: Colors.white70,
-              shape: BoxShape.circle,
-            ),
-          ),
+          decoration: BoxDecoration(color: selected ? const Color(0xFF315FBE) : Colors.transparent, borderRadius: BorderRadius.circular(10)),
+          child: Container(width: dotSize, height: dotSize, decoration: const BoxDecoration(color: Colors.white70, shape: BoxShape.circle)),
         ),
       ),
     );
   }
 
-  Widget _statusChip({
-    required IconData icon,
-    required String text,
-    required bool active,
-  }) {
+  Widget _statusChip({required IconData icon, required String text, required bool active}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: active
-            ? const Color(0xFF1D6B49).withValues(alpha: .75)
-            : Colors.white.withValues(alpha: .05),
-        borderRadius: BorderRadius.circular(10),
-      ),
+      decoration: BoxDecoration(color: active ? const Color(0xFF1D6B49).withValues(alpha: .75) : Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(10)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
