@@ -19,7 +19,7 @@ class _CanvasPageState extends State<CanvasPage> {
   CanvasTool _tool = CanvasTool.draw;
   PenStyle _pen = PenStyle.ballpointBlack;
   double _width = PenStyle.ballpointBlack.width;
-  double _eraserRadius = 22.0;
+  final double _eraserRadius = 22.0;
   int _selectedPreset = 0;
   _DockSide _dockSide = _DockSide.right;
   late List<PenStyle> _favorites;
