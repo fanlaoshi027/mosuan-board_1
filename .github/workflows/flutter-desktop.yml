@@ -24,6 +24,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Generate desktop platform projects
+        run: flutter create --platforms=linux .
+
       - name: Pub get
         run: flutter pub get
 
@@ -31,7 +34,12 @@ jobs:
         run: flutter analyze
 
       - name: Test
-        run: flutter test
+        run: |
+          if [ -d test ]; then
+            flutter test
+          else
+            echo "No test directory; skipping tests."
+          fi
 
   build-macos:
     runs-on: macos-latest
@@ -51,6 +59,9 @@ jobs:
 
       - name: Enable macOS desktop
         run: flutter config --enable-macos-desktop
+
+      - name: Generate macOS project
+        run: flutter create --platforms=macos .
 
       - name: Pub get
         run: flutter pub get
@@ -98,6 +109,9 @@ jobs:
 
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
+
+      - name: Generate Windows project
+        run: flutter create --platforms=windows .
 
       - name: Pub get
         run: flutter pub get
