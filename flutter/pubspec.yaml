@@ -2,7 +2,7 @@ name: ink_board
 
 description: Flutter desktop handwriting board - Path A
 publish_to: "none"
-version: 0.1.0+1
+version: 0.2.0+1
 
 environment:
   sdk: ">=3.7.0 <4.0.0"
@@ -12,7 +12,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  scribe_canvas: ^0.6.3
+  fluera_canvas: ^0.10.4
 
 dev_dependencies:
   flutter_test:
