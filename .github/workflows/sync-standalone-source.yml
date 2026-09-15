@@ -34,9 +34,7 @@ jobs:
           rm -rf Sources/MosuanBoard/Platform/iPadOS
           rm -rf scripts
           cp -R /tmp/mosuan-source/scripts .
-          mkdir -p Resources
-          cp /tmp/mosuan-source/Resources/AppIcon.png Resources/AppIcon.png
-          git add Sources/MosuanBoard scripts Resources/AppIcon.png
+          git add Sources/MosuanBoard scripts
           if git diff --cached --quiet; then echo 'No source changes to sync'; exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
