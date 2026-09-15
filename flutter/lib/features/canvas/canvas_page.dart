@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:fluera_canvas/fluera_canvas.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../pen/pen_editor_dialog.dart';
@@ -24,10 +27,40 @@ class _CanvasPageState extends State<CanvasPage> {
   _DockSide _dockSide = _DockSide.right;
   late List<PenStyle> _favorites;
 
+  PointerDeviceKind? _inputKind;
+  double _pressure = 0.0;
+  int _sampleCount = 0;
+  int _samplesPerSecond = 0;
+  Timer? _sampleTimer;
+
   @override
   void initState() {
     super.initState();
     _favorites = List<PenStyle>.from(PenStyle.favorites);
+    _sampleTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        _samplesPerSecond = _sampleCount;
+        _sampleCount = 0;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _sampleTimer?.cancel();
+    super.dispose();
+  }
+
+  void _observePointer(PointerEvent event) {
+    if (event is PointerMoveEvent || event is PointerDownEvent) {
+      _sampleCount++;
+      if (!mounted) return;
+      setState(() {
+        _inputKind = event.kind;
+        _pressure = event.pressure.isFinite ? event.pressure : 0.0;
+      });
+    }
   }
 
   void _selectPen(PenStyle pen, {double? width, int? presetIndex}) {
@@ -76,15 +109,20 @@ class _CanvasPageState extends State<CanvasPage> {
               padding: const EdgeInsets.fromLTRB(14, 74, 14, 14),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
-                child: FlueraCanvas(
-                  key: _canvasKey,
-                  tool: _tool,
-                  strokeColor: _pen.color.withValues(alpha: _pen.opacity),
-                  strokeWidth: _width,
-                  eraserRadius: _eraserRadius,
-                  showEraserPreview: true,
-                  enableKeyboardShortcuts: true,
-                  background: const CanvasBackground.solid(Color(0xFFF9F9F7)),
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _observePointer,
+                  onPointerMove: _observePointer,
+                  child: FlueraCanvas(
+                    key: _canvasKey,
+                    tool: _tool,
+                    strokeColor: _pen.color.withValues(alpha: _pen.opacity),
+                    strokeWidth: _width,
+                    eraserRadius: _eraserRadius,
+                    showEraserPreview: true,
+                    enableKeyboardShortcuts: true,
+                    background: const CanvasBackground.solid(Color(0xFFF9F9F7)),
+                  ),
                 ),
               ),
             ),
@@ -97,6 +135,10 @@ class _CanvasPageState extends State<CanvasPage> {
   }
 
   Widget _buildTopBar() {
+    final kind = _inputKind == null ? '未检测' : _inputKind.toString().split('.').last;
+    final pressureText = _pressure.toStringAsFixed(2);
+    final inputText = '$kind  压力 $pressureText  ·  $_samplesPerSecond Hz';
+
     return Positioned(
       top: 12,
       left: 14,
@@ -136,7 +178,7 @@ class _CanvasPageState extends State<CanvasPage> {
             _widthButton(7),
             _widthButton(10),
             const Spacer(),
-            _statusChip(icon: Icons.gesture_rounded, text: '压感就绪', active: _tool == CanvasTool.draw || _tool == CanvasTool.line),
+            _statusChip(icon: Icons.speed_rounded, text: inputText, active: _inputKind == PointerDeviceKind.stylus),
             const SizedBox(width: 8),
             IconButton(tooltip: '撤销', onPressed: () => _canvasKey.currentState?.undo(), icon: const Icon(Icons.undo_rounded, size: 21)),
             IconButton(tooltip: '重做', onPressed: () => _canvasKey.currentState?.redo(), icon: const Icon(Icons.redo_rounded, size: 21)),
@@ -265,6 +307,7 @@ class _CanvasPageState extends State<CanvasPage> {
 
   Widget _statusChip({required IconData icon, required String text, required bool active}) {
     return Container(
+      constraints: const BoxConstraints(maxWidth: 300),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(color: active ? const Color(0xFF1D6B49).withValues(alpha: .75) : Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(10)),
       child: Row(
@@ -272,7 +315,7 @@ class _CanvasPageState extends State<CanvasPage> {
         children: [
           Icon(icon, size: 15, color: active ? const Color(0xFF8FF0BF) : Colors.white38),
           const SizedBox(width: 5),
-          Text(text, style: const TextStyle(fontSize: 12)),
+          Flexible(child: Text(text, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
         ],
       ),
     );
