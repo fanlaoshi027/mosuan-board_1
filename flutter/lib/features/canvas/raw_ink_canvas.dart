@@ -23,9 +23,8 @@ class _InkStroke {
 
 /// Minimal low-latency ink surface.
 ///
-/// The committed stroke layer only repaints when a stroke is finished or when
-/// undo/redo/clear changes history. The live stroke has its own repaint layer,
-/// so moving the pen does not redraw the entire page on every sample.
+/// Live input deliberately keeps the geometry cheap: very close samples are
+/// coalesced, while pressure is still rendered in small pressure bands.
 class RawInkCanvas extends StatefulWidget {
   const RawInkCanvas({super.key, required this.color, required this.width, this.onSample, this.backgroundColor = const Color(0xFFF9F9F7)});
   final Color color;
@@ -73,11 +72,10 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     _liveRevision.value++;
   }
 
-  bool _accepts(PointerEvent event) {
-    return event.kind == PointerDeviceKind.stylus ||
-        event.kind == PointerDeviceKind.invertedStylus ||
-        event.kind == PointerDeviceKind.mouse;
-  }
+  bool _accepts(PointerEvent event) =>
+      event.kind == PointerDeviceKind.stylus ||
+      event.kind == PointerDeviceKind.invertedStylus ||
+      event.kind == PointerDeviceKind.mouse;
 
   void _report(PointerEvent event) {
     widget.onSample?.call(RawInkSample(
@@ -100,7 +98,15 @@ class RawInkCanvasState extends State<RawInkCanvas> {
 
   void _move(PointerMoveEvent event) {
     if (event.pointer != _activePointer || _current == null) return;
-    _current!.points.add(_InkPoint(event.localPosition, _normalize(event)));
+    final points = _current!.points;
+    final next = event.localPosition;
+    // Do not flood the live painter with sub-pixel samples. Keep every sample
+    // for the diagnostic stream, but only store geometry that moves the stroke.
+    if (points.isNotEmpty && (next - points.last.position).distance < 0.7) {
+      _report(event);
+      return;
+    }
+    points.add(_InkPoint(next, _normalize(event)));
     _liveRevision.value++;
     _report(event);
   }
@@ -138,22 +144,12 @@ class RawInkCanvasState extends State<RawInkCanvas> {
           children: <Widget>[
             RepaintBoundary(
               child: CustomPaint(
-                painter: _HistoryInkPainter(
-                  revision: _historyRevision,
-                  strokes: _strokes,
-                  color: widget.color,
-                  width: widget.width,
-                ),
+                painter: _HistoryInkPainter(revision: _historyRevision, strokes: _strokes, color: widget.color, width: widget.width),
               ),
             ),
             RepaintBoundary(
               child: CustomPaint(
-                painter: _LiveInkPainter(
-                  revision: _liveRevision,
-                  stroke: _current,
-                  color: widget.color,
-                  width: widget.width,
-                ),
+                painter: _LiveInkPainter(revision: _liveRevision, stroke: _current, color: widget.color, width: widget.width),
               ),
             ),
           ],
@@ -242,11 +238,21 @@ class _LiveInkPainter extends CustomPainter {
       return;
     }
 
-    final path = Path()..moveTo(points.first.position.dx, points.first.position.dy);
+    // Keep the live path cheap, but do not freeze its width at the first
+    // pressure value. Consecutive points are grouped into coarse pressure
+    // bands, so pressure changes require only a handful of drawPath calls.
+    final paths = <int, Path>{};
     for (var i = 1; i < points.length; i++) {
-      path.lineTo(points[i].position.dx, points[i].position.dy);
+      final a = points[i - 1];
+      final b = points[i];
+      final band = (((a.pressure + b.pressure) * 0.5) * 7).round().clamp(0, 7);
+      final path = paths.putIfAbsent(band, () => Path()..moveTo(a.position.dx, a.position.dy));
+      path.lineTo(b.position.dx, b.position.dy);
     }
-    canvas.drawPath(path, _paintFor(points.first.pressure));
+    for (final entry in paths.entries) {
+      final pressure = (entry.key / 7.0).clamp(0.0, 1.0);
+      canvas.drawPath(entry.value, _paintFor(pressure));
+    }
   }
 
   Paint _paintFor(double pressure) {
