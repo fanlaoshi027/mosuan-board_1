@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   sync:
-    if: ${{ !contains(github.event.head_commit.message, 'chore: sync standalone source snapshot') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout standalone repository
@@ -20,6 +19,10 @@ jobs:
       - name: Copy source snapshot from Mosuan Board development branch
         run: |
           set -euo pipefail
+          if [ "${{ github.event.head_commit.message }}" = "chore: sync standalone source snapshot" ]; then
+            echo 'Source snapshot already synchronized.'
+            exit 0
+          fi
           rm -rf /tmp/mosuan-source
           git clone --depth 1 --branch mosuan-board-dev https://github.com/fanlaoshi027/math-learning-platform.git /tmp/mosuan-source
           rm -rf Sources/MosuanBoard
