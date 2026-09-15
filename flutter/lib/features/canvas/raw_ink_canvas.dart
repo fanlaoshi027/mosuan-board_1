@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -40,7 +42,8 @@ class _InkStroke {
 ///
 /// It bypasses high-level gesture recognizers and third-party stroke
 /// smoothing so the live stroke can follow Flutter's PointerMoveEvent as
-/// closely as possible. Completed strokes remain in memory for undo/redo.
+/// closely as possible. Rendering densifies large sample gaps without adding
+/// input latency or changing the stored geometry.
 class RawInkCanvas extends StatefulWidget {
   const RawInkCanvas({
     super.key,
@@ -136,7 +139,6 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     _current = null;
     _activePointer = null;
     _revision.value++;
-    _report(event);
   }
 
   double _normalize(PointerEvent event) {
@@ -209,21 +211,36 @@ class _RawInkPainter extends CustomPainter {
     }
 
     for (var i = 1; i < points.length; i++) {
-      final a = points[i - 1];
-      final b = points[i];
-      final averagePressure = (a.pressure + b.pressure) * 0.5;
-      final paint = _paintFor(averagePressure);
-      canvas.drawLine(a.position, b.position, paint);
+      _drawDenseSegment(canvas, points[i - 1], points[i]);
     }
 
-    // Round caps keep the live stroke continuous even when pointer samples
-    // arrive with a larger gap during fast handwriting.
     final first = points.first;
     final last = points.last;
     final firstPaint = _paintFor(first.pressure);
     final lastPaint = _paintFor(last.pressure);
     canvas.drawCircle(first.position, firstPaint.strokeWidth / 2, firstPaint);
     canvas.drawCircle(last.position, lastPaint.strokeWidth / 2, lastPaint);
+  }
+
+  void _drawDenseSegment(Canvas canvas, _InkPoint a, _InkPoint b) {
+    final dx = b.position.dx - a.position.dx;
+    final dy = b.position.dy - a.position.dy;
+    final distance = math.sqrt(dx * dx + dy * dy);
+    // Fill large gaps with short linear segments. This only affects painting;
+    // the original pointer samples remain untouched for diagnostics/history.
+    final steps = math.max(1, (distance / 2.0).ceil());
+
+    var previous = a.position;
+    for (var step = 1; step <= steps; step++) {
+      final t = step / steps;
+      final position = Offset(
+        a.position.dx + dx * t,
+        a.position.dy + dy * t,
+      );
+      final pressure = a.pressure + (b.pressure - a.pressure) * t;
+      canvas.drawLine(previous, position, _paintFor(pressure));
+      previous = position;
+    }
   }
 
   Paint _paintFor(double pressure) {
