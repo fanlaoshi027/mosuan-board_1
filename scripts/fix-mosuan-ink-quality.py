@@ -5,6 +5,16 @@ renderer = ROOT / "Sources/MosuanBoard/Metal/InkRenderer.swift"
 view = ROOT / "Sources/MosuanBoard/Metal/InkMetalView.swift"
 
 r = renderer.read_text()
+
+# Some older snapshots of InkRenderer.swift have the final function brace of
+# appendBackground omitted. Normalize that source shape before replacing the
+# stroke renderer.
+bg_start = r.index("    private func appendBackground(")
+stroke_start = r.index("    private func appendStroke(", bg_start)
+bg_block = r[bg_start:stroke_start]
+if bg_block.count("{") > bg_block.count("}"):
+    r = r[:stroke_start] + "    }\n" + r[stroke_start:]
+
 start = r.index("    private func appendStroke(")
 end = r.index("    private func appendSelection(", start)
 new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle, to out: inout [InkVertex]) {
@@ -31,9 +41,8 @@ new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle,
             return
         }
 
-        // The perfect-freehand algorithm returns one closed outline polygon.
-        // For the current Metal renderer, a fan from the polygon centroid keeps
-        // this integration tiny and avoids introducing another rendering engine.
+        // perfect-freehand returns a closed outline polygon. Fill it with
+        // Metal triangles while keeping the existing renderer untouched.
         var center = SIMD2<Float>(0, 0)
         for p in outline { center += p }
         center /= Float(outline.count)
