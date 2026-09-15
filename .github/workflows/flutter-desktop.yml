@@ -82,7 +82,7 @@ jobs:
             --window-size 760 420 \
             --app-drop-link 560 210 \
             --icon-size 100 \
-            --icon "墨写.app" 180 210 \
+            --icon "ink_board.app" 180 210 \
             "build/dmg/墨写-测试版.dmg" \
             "build/macos/Build/Products/Release/"
 
