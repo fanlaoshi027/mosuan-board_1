@@ -5,11 +5,6 @@ renderer = ROOT / "Sources/MosuanBoard/Metal/InkRenderer.swift"
 view = ROOT / "Sources/MosuanBoard/Metal/InkMetalView.swift"
 
 r = renderer.read_text()
-
-# The renderer source remains intentionally small. The actual freehand stroke
-# geometry now lives in the native Swift PerfectFreehandStroke port. This build
-# patch only wires it into the existing Metal renderer and keeps the historical
-# 4x MSAA / UI-quality fixes idempotent.
 start = r.index("    private func appendStroke(")
 end = r.index("    private func appendSelection(", start)
 new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle, to out: inout [InkVertex]) {
@@ -35,76 +30,18 @@ new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle,
             disk(viewPoint(from: SIMD2(p.x, p.y)), max(0.5, strokeWidth(p.pressure, style)), color, to: &out)
             return
         }
-        appendFilledPolygon(outline, color: color, to: &out)
-    }
 
-    private func appendFilledPolygon(_ points: [SIMD2<Float>], color: SIMD4<Float>, to out: inout [InkVertex]) {
-        guard points.count >= 3 else { return }
-        let projected = points.map { viewPoint(from: $0) }
-        var indices = Array(projected.indices)
-        let area = polygonArea(projected)
-        if area < 0 { indices.reverse() }
-
-        while indices.count >= 3 {
-            if indices.count == 3 {
-                triangle(projected[indices[0]], projected[indices[1]], projected[indices[2]], color: color, to: &out)
-                break
-            }
-
-            var earFound = false
-            for i in indices.indices {
-                let ia = indices[(i - 1 + indices.count) % indices.count]
-                let ib = indices[i]
-                let ic = indices[(i + 1) % indices.count]
-                let a = projected[ia], b = projected[ib], c = projected[ic]
-                if cross2(a, b, c) <= 0.0001 { continue }
-
-                var containsOther = false
-                for j in indices where j != ia && j != ib && j != ic {
-                    if pointInTriangle(projected[j], a, b, c) {
-                        containsOther = true
-                        break
-                    }
-                }
-                if containsOther { continue }
-
-                triangle(a, b, c, color: color, to: &out)
-                indices.remove(at: i)
-                earFound = true
-                break
-            }
-
-            if !earFound {
-                // Safe fallback for pathological/self-touching outlines.
-                for i in 1..<(indices.count - 1) {
-                    triangle(projected[indices[0]], projected[indices[i]], projected[indices[i + 1]], color: color, to: &out)
-                }
-                break
-            }
+        // The perfect-freehand algorithm returns one closed outline polygon.
+        // For the current Metal renderer, a fan from the polygon centroid keeps
+        // this integration tiny and avoids introducing another rendering engine.
+        var center = SIMD2<Float>(0, 0)
+        for p in outline { center += p }
+        center /= Float(outline.count)
+        let viewCenter = viewPoint(from: center)
+        for i in outline.indices {
+            let next = (i + 1) % outline.count
+            triangle(viewCenter, viewPoint(from: outline[i]), viewPoint(from: outline[next]), color: color, to: &out)
         }
-    }
-
-    private func polygonArea(_ points: [SIMD2<Float>]) -> Float {
-        guard points.count >= 3 else { return 0 }
-        var area: Float = 0
-        for i in points.indices {
-            let j = (i + 1) % points.count
-            area += points[i].x * points[j].y - points[j].x * points[i].y
-        }
-        return area * 0.5
-    }
-
-    private func cross2(_ a: SIMD2<Float>, _ b: SIMD2<Float>, _ c: SIMD2<Float>) -> Float {
-        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
-    }
-
-    private func pointInTriangle(_ p: SIMD2<Float>, _ a: SIMD2<Float>, _ b: SIMD2<Float>, _ c: SIMD2<Float>) -> Bool {
-        let c1 = cross2(a, b, p)
-        let c2 = cross2(b, c, p)
-        let c3 = cross2(c, a, p)
-        let hasNegative = c1 < -0.0001 || c2 < -0.0001 || c3 < -0.0001
-        let hasPositive = c1 > 0.0001 || c2 > 0.0001 || c3 > 0.0001
-        return !(hasNegative && hasPositive)
     }
 '''
 r = r[:start] + new_stroke + r[end:]
@@ -145,4 +82,4 @@ v = v.replace(
 )
 view.write_text(v)
 
-print("Using native Swift perfect-freehand stroke geometry with Metal fill, plus existing MSAA/prediction quality fixes.")
+print("Using native Swift perfect-freehand geometry with Metal fill, plus existing MSAA/prediction quality fixes.")
