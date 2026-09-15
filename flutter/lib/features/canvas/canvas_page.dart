@@ -1,6 +1,7 @@
 import 'package:fluera_canvas/fluera_canvas.dart';
 import 'package:flutter/material.dart';
 
+import '../pen/pen_editor_dialog.dart';
 import '../pen/pen_style.dart';
 
 class CanvasPage extends StatefulWidget {
@@ -21,6 +22,13 @@ class _CanvasPageState extends State<CanvasPage> {
   double _eraserRadius = 22.0;
   int _selectedPreset = 0;
   _DockSide _dockSide = _DockSide.right;
+  late List<PenStyle> _favorites;
+
+  @override
+  void initState() {
+    super.initState();
+    _favorites = List<PenStyle>.from(PenStyle.favorites);
+  }
 
   void _selectPen(PenStyle pen, {double? width, int? presetIndex}) {
     setState(() {
@@ -40,6 +48,21 @@ class _CanvasPageState extends State<CanvasPage> {
       opacity: _pen.opacity,
     );
     _selectPen(next);
+  }
+
+  Future<void> _editFavorite(int index) async {
+    final edited = await showDialog<PenStyle>(
+      context: context,
+      builder: (_) => PenEditorDialog(initial: _favorites[index]),
+    );
+    if (!mounted || edited == null) return;
+    setState(() {
+      _favorites[index] = edited;
+      if (_selectedPreset == index) {
+        _pen = edited;
+        _width = edited.width;
+      }
+    });
   }
 
   @override
@@ -86,20 +109,13 @@ class _CanvasPageState extends State<CanvasPage> {
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.white.withValues(alpha: .08)),
           boxShadow: const [
-            BoxShadow(
-              blurRadius: 18,
-              offset: Offset(0, 7),
-              color: Colors.black26,
-            ),
+            BoxShadow(blurRadius: 18, offset: Offset(0, 7), color: Colors.black26),
           ],
         ),
         child: Row(
           children: [
             const SizedBox(width: 10),
-            const Text(
-              '墨写',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
+            const Text('墨写', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(width: 18),
             _toolButton(icon: Icons.edit_rounded, label: '画笔', active: _tool == CanvasTool.draw, onPressed: () => _selectPen(_pen, width: _width)),
             _toolButton(icon: Icons.straighten_rounded, label: '直线', active: _tool == CanvasTool.line, onPressed: () => setState(() => _tool = CanvasTool.line)),
@@ -159,9 +175,9 @@ class _CanvasPageState extends State<CanvasPage> {
                 ),
               ),
             ),
-            for (var i = 0; i < PenStyle.favorites.length; i++) ...[
-              _presetButton(PenStyle.favorites[i], i),
-              if (i != PenStyle.favorites.length - 1) const SizedBox(height: 5),
+            for (var i = 0; i < _favorites.length; i++) ...[
+              _presetButton(_favorites[i], i),
+              if (i != _favorites.length - 1) const SizedBox(height: 5),
             ],
           ],
         ),
@@ -172,24 +188,30 @@ class _CanvasPageState extends State<CanvasPage> {
   Widget _presetButton(PenStyle preset, int index) {
     final selected = _selectedPreset == index && _tool == CanvasTool.draw;
     return Tooltip(
-      message: preset.name,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(13),
-        onTap: () => _selectPen(preset, presetIndex: index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(color: selected ? const Color(0xFF315FBE) : Colors.white.withValues(alpha: .05), borderRadius: BorderRadius.circular(13)),
-          child: Center(
-            child: Container(
-              width: preset.kind == PenKind.highlighter ? 27 : 23,
-              height: preset.kind == PenKind.highlighter ? 12 : 23,
-              decoration: BoxDecoration(
-                color: preset.color.withValues(alpha: preset.opacity),
-                shape: preset.kind == PenKind.highlighter ? BoxShape.rectangle : BoxShape.circle,
-                borderRadius: preset.kind == PenKind.highlighter ? BorderRadius.circular(6) : null,
-                border: Border.all(color: Colors.white24),
+      message: '${preset.name}（长按编辑）',
+      child: GestureDetector(
+        onLongPress: () => _editFavorite(index),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(13),
+          onTap: () => _selectPen(preset, presetIndex: index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: selected ? const Color(0xFF315FBE) : Colors.white.withValues(alpha: .05),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Center(
+              child: Container(
+                width: preset.kind == PenKind.highlighter ? 27 : 23,
+                height: preset.kind == PenKind.highlighter ? 12 : 23,
+                decoration: BoxDecoration(
+                  color: preset.color.withValues(alpha: preset.opacity),
+                  shape: preset.kind == PenKind.highlighter ? BoxShape.rectangle : BoxShape.circle,
+                  borderRadius: preset.kind == PenKind.highlighter ? BorderRadius.circular(6) : null,
+                  border: Border.all(color: Colors.white24),
+                ),
               ),
             ),
           ),
