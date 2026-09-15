@@ -1,0 +1,63 @@
+name: Flutter Path A
+
+on:
+  push:
+    branches: [flutter-a-dev]
+  pull_request:
+    branches: [flutter-a-dev]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  desktop-build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate desktop hosts
+        run: flutter create . --platforms=${{ matrix.platform }}
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build desktop
+        run: flutter build ${{ matrix.platform }} --debug
