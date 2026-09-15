@@ -1,5 +1,13 @@
+import 'package:fluera_canvas/fluera_canvas.dart';
 import 'package:flutter/material.dart';
-import 'package:scribe_canvas/scribe_canvas.dart';
+
+class _PenPreset {
+  const _PenPreset({required this.name, required this.color, required this.width});
+
+  final String name;
+  final Color color;
+  final double width;
+}
 
 class CanvasPage extends StatefulWidget {
   const CanvasPage({super.key});
@@ -9,135 +17,203 @@ class CanvasPage extends StatefulWidget {
 }
 
 class _CanvasPageState extends State<CanvasPage> {
-  final ScribeCanvasController _controller = ScribeCanvasController();
+  final _canvasKey = GlobalKey<FlueraCanvasState>();
 
-  bool _isEraser = false;
-  bool _isPanMode = false;
-  double _strokeWidth = 4;
-  Color _color = Colors.white;
+  static const _presets = <_PenPreset>[
+    _PenPreset(name: '黑笔', color: Color(0xFF202124), width: 3.0),
+    _PenPreset(name: '红笔', color: Color(0xFFE53935), width: 3.5),
+    _PenPreset(name: '蓝笔', color: Color(0xFF1E88E5), width: 3.5),
+    _PenPreset(name: '黄笔', color: Color(0xFFFFB300), width: 7.0),
+  ];
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  CanvasTool _tool = CanvasTool.draw;
+  Color _color = const Color(0xFF202124);
+  double _width = 3.0;
+  double _eraserRadius = 22.0;
+  int _selectedPreset = 0;
+
+  void _selectPen(Color color, double width, {int? presetIndex}) {
+    setState(() {
+      _tool = CanvasTool.draw;
+      _color = color;
+      _width = width;
+      if (presetIndex != null) _selectedPreset = presetIndex;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF111318),
       body: Stack(
         children: [
           Positioned.fill(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 76, 16, 16),
+              padding: const EdgeInsets.fromLTRB(14, 74, 14, 14),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(18),
-                child: ColoredBox(
-                  color: const Color(0xFFF9F9F7),
-                  child: ScribeCanvas(
-                    controller: _controller,
-                    color: _color,
-                    strokeWidth: _strokeWidth,
-                    isEraser: _isEraser,
-                    isPanMode: _isPanMode,
-                    multiPage: false,
-                    onStrokeEnd: () => setState(() {}),
-                    onUndo: () => setState(() {}),
-                    onRedo: () => setState(() {}),
-                  ),
+                child: FlueraCanvas(
+                  key: _canvasKey,
+                  tool: _tool,
+                  strokeColor: _color,
+                  strokeWidth: _width,
+                  eraserRadius: _eraserRadius,
+                  showEraserPreview: true,
+                  enableKeyboardShortcuts: true,
+                  background: const CanvasBackground.solid(Color(0xFFF9F9F7)),
                 ),
               ),
             ),
           ),
-          _buildTopBar(context),
+          _buildTopBar(),
+          _buildPenDock(),
         ],
       ),
     );
   }
 
-  Widget _buildTopBar(BuildContext context) {
+  Widget _buildTopBar() {
     return Positioned(
       top: 12,
-      left: 16,
-      right: 16,
+      left: 14,
+      right: 14,
       child: Container(
-        height: 52,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
           color: const Color(0xFF1A1D24),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.white.withValues(alpha: .08)),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 18,
+              offset: Offset(0, 7),
+              color: Colors.black26,
+            ),
+          ],
         ),
         child: Row(
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Text(
-                '墨写',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-              ),
+            const SizedBox(width: 10),
+            const Text(
+              '墨写',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 18),
             _toolButton(
               icon: Icons.edit_rounded,
-              active: !_isEraser && !_isPanMode,
-              onPressed: () => setState(() {
-                _isEraser = false;
-                _isPanMode = false;
-              }),
-              tooltip: '画笔',
+              label: '画笔',
+              active: _tool == CanvasTool.draw,
+              onPressed: () => _selectPen(_color, _width),
             ),
             _toolButton(
               icon: Icons.auto_fix_normal_rounded,
-              active: _isEraser,
-              onPressed: () => setState(() {
-                _isEraser = true;
-                _isPanMode = false;
-              }),
-              tooltip: '橡皮',
+              label: '橡皮',
+              active: _tool == CanvasTool.erase,
+              onPressed: () => setState(() => _tool = CanvasTool.erase),
             ),
             _toolButton(
-              icon: Icons.pan_tool_alt_rounded,
-              active: _isPanMode,
-              onPressed: () => setState(() {
-                _isPanMode = true;
-                _isEraser = false;
-              }),
-              tooltip: '平移',
+              icon: Icons.ads_click_rounded,
+              label: '选择',
+              active: _tool == CanvasTool.select,
+              onPressed: () => setState(() => _tool = CanvasTool.select),
             ),
-            const VerticalDivider(indent: 12, endIndent: 12),
-            _colorButton(Colors.white),
-            _colorButton(const Color(0xFFE53935)),
-            _colorButton(const Color(0xFF1E88E5)),
-            _colorButton(const Color(0xFFFFC107)),
+            const VerticalDivider(indent: 12, endIndent: 12, width: 18),
+            _colorDot(const Color(0xFF202124)),
+            _colorDot(const Color(0xFFE53935)),
+            _colorDot(const Color(0xFF1E88E5)),
+            _colorDot(const Color(0xFF43A047)),
+            _colorDot(const Color(0xFFFFB300)),
             const SizedBox(width: 8),
-            DropdownButtonHideUnderline(
-              child: DropdownButton<double>(
-                value: _strokeWidth,
-                dropdownColor: const Color(0xFF1A1D24),
-                items: const [2.0, 4.0, 7.0, 10.0, 16.0]
-                    .map((width) => DropdownMenuItem(
-                          value: width,
-                          child: Text('${width.toInt()} px'),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) setState(() => _strokeWidth = value);
-                },
+            _widthButton(2),
+            _widthButton(4),
+            _widthButton(7),
+            _widthButton(10),
+            const Spacer(),
+            _statusChip(
+              icon: Icons.gesture_rounded,
+              text: '压感',
+              active: _tool == CanvasTool.draw,
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: '撤销',
+              onPressed: () => _canvasKey.currentState?.undo(),
+              icon: const Icon(Icons.undo_rounded, size: 21),
+            ),
+            IconButton(
+              tooltip: '重做',
+              onPressed: () => _canvasKey.currentState?.redo(),
+              icon: const Icon(Icons.redo_rounded, size: 21),
+            ),
+            IconButton(
+              tooltip: '清空',
+              onPressed: () => _canvasKey.currentState?.clear(),
+              icon: const Icon(Icons.delete_outline_rounded, size: 21),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPenDock() {
+    return Positioned(
+      right: 24,
+      top: 94,
+      child: Container(
+        width: 58,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1D24).withValues(alpha: .96),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        ),
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Icon(Icons.push_pin_rounded, size: 16, color: Colors.white54),
+            ),
+            for (var i = 0; i < _presets.length; i++) ...[
+              _presetButton(_presets[i], i),
+              if (i != _presets.length - 1) const SizedBox(height: 5),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _presetButton(_PenPreset preset, int index) {
+    final selected = _selectedPreset == index && _tool == CanvasTool.draw;
+    return Tooltip(
+      message: preset.name,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(13),
+        onTap: () => _selectPen(preset.color, preset.width, presetIndex: index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: selected
+                ? const Color(0xFF315FBE)
+                : Colors.white.withValues(alpha: .05),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Center(
+            child: Container(
+              width: 23,
+              height: 23,
+              decoration: BoxDecoration(
+                color: preset.color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24),
               ),
             ),
-            const Spacer(),
-            _toolButton(
-              icon: Icons.undo_rounded,
-              onPressed: _controller.undo,
-              tooltip: '撤销',
-            ),
-            _toolButton(
-              icon: Icons.redo_rounded,
-              onPressed: _controller.redo,
-              tooltip: '重做',
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -145,16 +221,17 @@ class _CanvasPageState extends State<CanvasPage> {
 
   Widget _toolButton({
     required IconData icon,
+    required String label,
+    required bool active,
     required VoidCallback onPressed,
-    required String tooltip,
-    bool active = false,
   }) {
     return Tooltip(
-      message: tooltip,
+      message: label,
       child: IconButton(
         onPressed: onPressed,
         style: IconButton.styleFrom(
-          backgroundColor: active ? const Color(0xFF315FBE) : Colors.transparent,
+          backgroundColor:
+              active ? const Color(0xFF315FBE) : Colors.transparent,
           foregroundColor: active ? Colors.white : Colors.white70,
         ),
         icon: Icon(icon, size: 20),
@@ -162,22 +239,74 @@ class _CanvasPageState extends State<CanvasPage> {
     );
   }
 
-  Widget _colorButton(Color color) {
-    final selected = _color == color;
+  Widget _colorDot(Color color) {
+    final selected = _color.toARGB32() == color.toARGB32() && _tool == CanvasTool.draw;
     return IconButton(
       tooltip: '颜色',
-      onPressed: () => setState(() => _color = color),
+      onPressed: () => _selectPen(color, _width),
       icon: Container(
-        width: 20,
-        height: 20,
+        width: 18,
+        height: 18,
         decoration: BoxDecoration(
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
             color: selected ? const Color(0xFF4F8CFF) : Colors.white24,
-            width: selected ? 2 : 1,
+            width: selected ? 2.5 : 1,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _widthButton(double width) {
+    final selected = _width == width && _tool == CanvasTool.draw;
+    return Tooltip(
+      message: '${width.toInt()} px',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => _selectPen(_color, width),
+        child: Container(
+          width: 30,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF315FBE) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Container(
+            width: width.clamp(2, 12),
+            height: width.clamp(2, 12),
+            decoration: BoxDecoration(
+              color: Colors.white70,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusChip({
+    required IconData icon,
+    required String text,
+    required bool active,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: active
+            ? const Color(0xFF1D6B49).withValues(alpha: .75)
+            : Colors.white.withValues(alpha: .05),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: active ? const Color(0xFF8FF0BF) : Colors.white38),
+          const SizedBox(width: 5),
+          Text(text, style: const TextStyle(fontSize: 12)),
+        ],
       ),
     );
   }
