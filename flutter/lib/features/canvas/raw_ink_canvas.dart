@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -23,10 +21,8 @@ class _InkStroke {
   final List<_InkPoint> points;
 }
 
-/// Low-latency ink surface. macOS tablet input can arrive as either stylus
-/// or mouse events depending on the Flutter/macOS input bridge, so both are
-/// accepted for drawing. Real pressure is preserved whenever the platform
-/// supplies it.
+/// Minimal live ink renderer: keep the input points intact and avoid
+/// per-sample interpolation so the pen does not lag behind the hand.
 class RawInkCanvas extends StatefulWidget {
   const RawInkCanvas({super.key, required this.color, required this.width, this.onSample, this.backgroundColor = const Color(0xFFF9F9F7)});
   final Color color;
@@ -168,29 +164,32 @@ class _RawInkPainter extends CustomPainter {
       canvas.drawCircle(p.position, paint.strokeWidth / 2, paint);
       return;
     }
-    for (var i = 1; i < points.length; i++) {
-      _drawDenseSegment(canvas, points[i - 1], points[i]);
-    }
-    final first = points.first;
-    final last = points.last;
-    final firstPaint = _paintFor(first.pressure);
-    final lastPaint = _paintFor(last.pressure);
-    canvas.drawCircle(first.position, firstPaint.strokeWidth / 2, firstPaint);
-    canvas.drawCircle(last.position, lastPaint.strokeWidth / 2, lastPaint);
-  }
 
-  void _drawDenseSegment(Canvas canvas, _InkPoint a, _InkPoint b) {
-    final dx = b.position.dx - a.position.dx;
-    final dy = b.position.dy - a.position.dy;
-    final distance = math.sqrt(dx * dx + dy * dy);
-    final steps = math.max(1, (distance / 2.0).ceil());
-    var previous = a.position;
-    for (var step = 1; step <= steps; step++) {
-      final t = step / steps;
-      final position = Offset(a.position.dx + dx * t, a.position.dy + dy * t);
-      final pressure = a.pressure + (b.pressure - a.pressure) * t;
-      canvas.drawLine(previous, position, _paintFor(pressure));
-      previous = position;
+    final path = Path()..moveTo(points.first.position.dx, points.first.position.dy);
+    for (var i = 1; i < points.length; i++) {
+      path.lineTo(points[i].position.dx, points[i].position.dy);
+    }
+
+    // Draw the path in one operation. Pressure is applied as a lightweight
+    // variable-width overlay only when the incoming pressure actually varies.
+    var pressureVaries = false;
+    final firstPressure = points.first.pressure;
+    for (var i = 1; i < points.length; i++) {
+      if ((points[i].pressure - firstPressure).abs() > 0.01) {
+        pressureVaries = true;
+        break;
+      }
+    }
+
+    if (!pressureVaries) {
+      canvas.drawPath(path, _paintFor(firstPressure));
+      return;
+    }
+
+    for (var i = 1; i < points.length; i++) {
+      final a = points[i - 1];
+      final b = points[i];
+      canvas.drawLine(a.position, b.position, _paintFor((a.pressure + b.pressure) / 2));
     }
   }
 
