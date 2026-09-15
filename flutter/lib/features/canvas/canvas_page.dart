@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fluera_canvas/fluera_canvas.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:scribble/scribble.dart';
 
 import '../pen/pen_editor_dialog.dart';
 import '../pen/pen_style.dart';
@@ -18,6 +19,11 @@ enum _DockSide { left, right }
 
 class _CanvasPageState extends State<CanvasPage> {
   final _canvasKey = GlobalKey<FlueraCanvasState>();
+  final _scribbleNotifier = ScribbleNotifier(
+    allowedPointersMode: ScribblePointerMode.penOnly,
+    maxHistoryLength: 100,
+    pressureCurve: Curves.linear,
+  );
 
   CanvasTool _tool = CanvasTool.draw;
   PenStyle _pen = PenStyle.ballpointBlack;
@@ -37,6 +43,7 @@ class _CanvasPageState extends State<CanvasPage> {
   void initState() {
     super.initState();
     _favorites = List<PenStyle>.from(PenStyle.favorites);
+    _syncScribblePen();
     _sampleTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
@@ -49,18 +56,21 @@ class _CanvasPageState extends State<CanvasPage> {
   @override
   void dispose() {
     _sampleTimer?.cancel();
+    _scribbleNotifier.dispose();
     super.dispose();
   }
 
   void _observePointer(PointerEvent event) {
     if (event is PointerMoveEvent || event is PointerDownEvent) {
-      // Keep the diagnostic observer completely out of the hot rebuild path.
-      // Rebuilding the parent Stack for every stylus sample can add visible
-      // latency even though FlueraCanvas itself is receiving the raw events.
       _sampleCount++;
       _inputKind = event.kind;
       _pressure = event.pressure.isFinite ? event.pressure : 0.0;
     }
+  }
+
+  void _syncScribblePen() {
+    _scribbleNotifier.setColor(_pen.color.withValues(alpha: _pen.opacity));
+    _scribbleNotifier.setStrokeWidth(_width);
   }
 
   void _selectPen(PenStyle pen, {double? width, int? presetIndex}) {
@@ -70,6 +80,7 @@ class _CanvasPageState extends State<CanvasPage> {
       _width = width ?? pen.width;
       if (presetIndex != null) _selectedPreset = presetIndex;
     });
+    _syncScribblePen();
   }
 
   void _selectColor(Color color) {
@@ -96,6 +107,57 @@ class _CanvasPageState extends State<CanvasPage> {
         _width = edited.width;
       }
     });
+    _syncScribblePen();
+  }
+
+  Widget _buildCanvas() {
+    final isFreehand = _tool == CanvasTool.draw;
+
+    if (isFreehand) {
+      return Container(
+        color: const Color(0xFFF9F9F7),
+        child: Scribble(
+          notifier: _scribbleNotifier,
+          drawPen: true,
+          drawEraser: false,
+        ),
+      );
+    }
+
+    return FlueraCanvas(
+      key: _canvasKey,
+      tool: _tool,
+      strokeColor: _pen.color.withValues(alpha: _pen.opacity),
+      strokeWidth: _width,
+      eraserRadius: _eraserRadius,
+      showEraserPreview: true,
+      enableKeyboardShortcuts: true,
+      background: const CanvasBackground.solid(Color(0xFFF9F9F7)),
+    );
+  }
+
+  void _undo() {
+    if (_tool == CanvasTool.draw) {
+      _scribbleNotifier.undo();
+    } else {
+      _canvasKey.currentState?.undo();
+    }
+  }
+
+  void _redo() {
+    if (_tool == CanvasTool.draw) {
+      _scribbleNotifier.redo();
+    } else {
+      _canvasKey.currentState?.redo();
+    }
+  }
+
+  void _clear() {
+    if (_tool == CanvasTool.draw) {
+      _scribbleNotifier.clear();
+    } else {
+      _canvasKey.currentState?.clear();
+    }
   }
 
   @override
@@ -113,16 +175,7 @@ class _CanvasPageState extends State<CanvasPage> {
                   behavior: HitTestBehavior.opaque,
                   onPointerDown: _observePointer,
                   onPointerMove: _observePointer,
-                  child: FlueraCanvas(
-                    key: _canvasKey,
-                    tool: _tool,
-                    strokeColor: _pen.color.withValues(alpha: _pen.opacity),
-                    strokeWidth: _width,
-                    eraserRadius: _eraserRadius,
-                    showEraserPreview: true,
-                    enableKeyboardShortcuts: true,
-                    background: const CanvasBackground.solid(Color(0xFFF9F9F7)),
-                  ),
+                  child: _buildCanvas(),
                 ),
               ),
             ),
@@ -180,9 +233,9 @@ class _CanvasPageState extends State<CanvasPage> {
             const Spacer(),
             _statusChip(icon: Icons.speed_rounded, text: inputText, active: _inputKind == PointerDeviceKind.stylus),
             const SizedBox(width: 8),
-            IconButton(tooltip: '撤销', onPressed: () => _canvasKey.currentState?.undo(), icon: const Icon(Icons.undo_rounded, size: 21)),
-            IconButton(tooltip: '重做', onPressed: () => _canvasKey.currentState?.redo(), icon: const Icon(Icons.redo_rounded, size: 21)),
-            IconButton(tooltip: '清空', onPressed: () => _canvasKey.currentState?.clear(), icon: const Icon(Icons.delete_outline_rounded, size: 21)),
+            IconButton(tooltip: '撤销', onPressed: _undo, icon: const Icon(Icons.undo_rounded, size: 21)),
+            IconButton(tooltip: '重做', onPressed: _redo, icon: const Icon(Icons.redo_rounded, size: 21)),
+            IconButton(tooltip: '清空', onPressed: _clear, icon: const Icon(Icons.delete_outline_rounded, size: 21)),
             const SizedBox(width: 4),
           ],
         ),
