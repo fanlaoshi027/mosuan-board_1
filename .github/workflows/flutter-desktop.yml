@@ -7,6 +7,7 @@ on:
     branches: [flutter-a-dev]
   workflow_dispatch:
 
+# Keep desktop CI active for direct branch development and DMG testing.
 jobs:
   analyze:
     runs-on: ubuntu-latest
