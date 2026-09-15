@@ -106,7 +106,9 @@ class RawInkCanvasState extends State<RawInkCanvas> {
   void _finish(PointerEvent event) {
     if (event.pointer != _activePointer) return;
     final stroke = _current;
-    if (stroke != null && stroke.points.isNotEmpty) _strokes.add(stroke);
+    if (stroke != null && stroke.points.isNotEmpty) {
+      _strokes.add(stroke);
+    }
     _current = null;
     _activePointer = null;
     _revision.value++;
@@ -149,8 +151,12 @@ class _RawInkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final stroke in strokes) _paintStroke(canvas, stroke);
-    if (current != null) _paintStroke(canvas, current!);
+    for (final stroke in strokes) {
+      _paintStroke(canvas, stroke);
+    }
+    if (current != null) {
+      _paintStroke(canvas, current!);
+    }
   }
 
   void _paintStroke(Canvas canvas, _InkStroke stroke) {
@@ -162,7 +168,9 @@ class _RawInkPainter extends CustomPainter {
       canvas.drawCircle(p.position, paint.strokeWidth / 2, paint);
       return;
     }
-    for (var i = 1; i < points.length; i++) _drawDenseSegment(canvas, points[i - 1], points[i]);
+    for (var i = 1; i < points.length; i++) {
+      _drawDenseSegment(canvas, points[i - 1], points[i]);
+    }
     final first = points.first;
     final last = points.last;
     final firstPaint = _paintFor(first.pressure);
