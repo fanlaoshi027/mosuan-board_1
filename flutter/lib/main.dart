@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'features/canvas/canvas_page.dart';
+import 'features/canvas/canvas_page_v2.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +23,7 @@ class InkBoardApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const CanvasPage(),
+      home: const CanvasPageV2(),
     );
   }
 }
