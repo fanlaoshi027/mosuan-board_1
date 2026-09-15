@@ -1,0 +1,1 @@
+Fresh DMG build trigger for immediate live ink rendering test.
