@@ -27,31 +27,55 @@ new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle,
         let smooth = StrokeSmoother.smooth(s)
         guard smooth.count > 1 else { return }
 
-        // NSEvent samples can become sparse during fast writing. Densify the
-        // trajectory before building the ink ribbon so long chords do not read
-        // visually as separate "sections".
+        // NSEvent samples can become sparse during fast writing. First densify,
+        // then use a guarded cubic interpolation for gently curving runs. Sharp
+        // direction changes stay linear so normal handwriting corners remain crisp.
         var dense: [InkPoint] = []
         dense.reserveCapacity(max(smooth.count, Int(pathLength(smooth) / 1.5) + 2))
         dense.append(smooth[0])
         let maximumSpacing: Float = 1.5
+
         for i in 0..<(smooth.count - 1) {
-            let p = smooth[i]
-            let q = smooth[i + 1]
-            let dx = q.x - p.x
-            let dy = q.y - p.y
-            let distance = sqrt(dx * dx + dy * dy)
+            let p0 = smooth[max(0, i - 1)]
+            let p1 = smooth[i]
+            let p2 = smooth[i + 1]
+            let p3 = smooth[min(smooth.count - 1, i + 2)]
+            let dx = p2.x - p1.x
+            let dy = p2.y - p1.y
+            let distance = max(sqrt(dx * dx + dy * dy), 0.001)
             let steps = max(1, Int(ceil(distance / maximumSpacing)))
-            if steps > 1 {
+
+            let canCurve = i > 0 && i + 2 < smooth.count &&
+                isGentleTurn(from: p0, through: p1, to: p2) &&
+                isGentleTurn(from: p1, through: p2, to: p3)
+
+            if canCurve && steps > 1 {
+                for step in 1...steps {
+                    let t = Float(step) / Float(steps)
+                    let tt = t * t
+                    let ttt = tt * t
+                    let x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t +
+                                   (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt +
+                                   (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * ttt)
+                    let y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t +
+                                   (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt +
+                                   (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * ttt)
+                    let pressure = p1.pressure + (p2.pressure - p1.pressure) * t
+                    dense.append(InkPoint(x: x, y: y, pressure: pressure))
+                }
+            } else if steps > 1 {
                 for step in 1..<steps {
                     let t = Float(step) / Float(steps)
                     dense.append(InkPoint(
-                        x: p.x + dx * t,
-                        y: p.y + dy * t,
-                        pressure: p.pressure + (q.pressure - p.pressure) * t
+                        x: p1.x + dx * t,
+                        y: p1.y + dy * t,
+                        pressure: p1.pressure + (p2.pressure - p1.pressure) * t
                     ))
                 }
+                dense.append(p2)
+            } else {
+                dense.append(p2)
             }
-            dense.append(q)
         }
 
         // Width smoothing removes pressure jitter without adding noticeable lag.
@@ -107,6 +131,17 @@ new_stroke = r'''    private func appendStroke(_ s: [InkPoint], style: PenStyle,
         }
     }
 
+    private func isGentleTurn(from a: InkPoint, through b: InkPoint, to c: InkPoint) -> Bool {
+        let ax = a.x - b.x
+        let ay = a.y - b.y
+        let cx = c.x - b.x
+        let cy = c.y - b.y
+        let al = max(sqrt(ax * ax + ay * ay), 0.001)
+        let cl = max(sqrt(cx * cx + cy * cy), 0.001)
+        let cosine = (ax * cx + ay * cy) / (al * cl)
+        return cosine > -0.55
+    }
+
     private func pathLength(_ points: [InkPoint]) -> Float {
         guard points.count > 1 else { return 0 }
         var total: Float = 0
@@ -153,4 +188,4 @@ v = v.replace(
     1
 )
 view.write_text(v)
-print("Applied continuous ribbon geometry, fast-path densification, light width smoothing, 4x MSAA, forgiving smart-line detection, and live-only short-horizon tip prediction.")
+print("Applied guarded curve interpolation for sparse fast strokes, continuous ribbon geometry, light width smoothing, 4x MSAA, forgiving smart-line detection, and live-only tip prediction.")
