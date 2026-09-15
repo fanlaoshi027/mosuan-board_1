@@ -2,11 +2,17 @@ import 'package:fluera_canvas/fluera_canvas.dart';
 import 'package:flutter/material.dart';
 
 class _PenPreset {
-  const _PenPreset({required this.name, required this.color, required this.width});
+  const _PenPreset({
+    required this.name,
+    required this.color,
+    required this.width,
+    required this.icon,
+  });
 
   final String name;
   final Color color;
   final double width;
+  final IconData icon;
 }
 
 class CanvasPage extends StatefulWidget {
@@ -20,10 +26,36 @@ class _CanvasPageState extends State<CanvasPage> {
   final _canvasKey = GlobalKey<FlueraCanvasState>();
 
   static const _presets = <_PenPreset>[
-    _PenPreset(name: '黑笔', color: Color(0xFF202124), width: 3.0),
-    _PenPreset(name: '红笔', color: Color(0xFFE53935), width: 3.5),
-    _PenPreset(name: '蓝笔', color: Color(0xFF1E88E5), width: 3.5),
-    _PenPreset(name: '黄笔', color: Color(0xFFFFB300), width: 7.0),
+    _PenPreset(
+      name: '黑色钢笔',
+      color: Color(0xFF202124),
+      width: 3.0,
+      icon: Icons.edit_rounded,
+    ),
+    _PenPreset(
+      name: '红色钢笔',
+      color: Color(0xFFE53935),
+      width: 3.5,
+      icon: Icons.edit_rounded,
+    ),
+    _PenPreset(
+      name: '蓝色钢笔',
+      color: Color(0xFF1E88E5),
+      width: 3.5,
+      icon: Icons.edit_rounded,
+    ),
+    _PenPreset(
+      name: '绿色钢笔',
+      color: Color(0xFF43A047),
+      width: 3.5,
+      icon: Icons.edit_rounded,
+    ),
+    _PenPreset(
+      name: '黄色荧光笔',
+      color: Color(0xFFFFC107),
+      width: 10.0,
+      icon: Icons.brush_rounded,
+    ),
   ];
 
   CanvasTool _tool = CanvasTool.draw;
@@ -31,6 +63,7 @@ class _CanvasPageState extends State<CanvasPage> {
   double _width = 3.0;
   double _eraserRadius = 22.0;
   int _selectedPreset = 0;
+  bool _dockOnLeft = false;
 
   void _selectPen(Color color, double width, {int? presetIndex}) {
     setState(() {
@@ -132,10 +165,18 @@ class _CanvasPageState extends State<CanvasPage> {
             const Spacer(),
             _statusChip(
               icon: Icons.gesture_rounded,
-              text: '压感',
+              text: '压感就绪',
               active: _tool == CanvasTool.draw,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
+            IconButton(
+              tooltip: _dockOnLeft ? '笔槽移到右侧' : '笔槽移到左侧',
+              onPressed: () => setState(() => _dockOnLeft = !_dockOnLeft),
+              icon: Icon(
+                _dockOnLeft ? Icons.keyboard_double_arrow_right_rounded : Icons.keyboard_double_arrow_left_rounded,
+                size: 20,
+              ),
+            ),
             IconButton(
               tooltip: '撤销',
               onPressed: () => _canvasKey.currentState?.undo(),
@@ -160,15 +201,24 @@ class _CanvasPageState extends State<CanvasPage> {
 
   Widget _buildPenDock() {
     return Positioned(
-      right: 24,
+      left: _dockOnLeft ? 24 : null,
+      right: _dockOnLeft ? null : 24,
       top: 94,
-      child: Container(
-        width: 58,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 62,
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: const Color(0xFF1A1D24).withValues(alpha: .96),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: .08)),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 20,
+              offset: Offset(0, 8),
+              color: Colors.black26,
+            ),
+          ],
         ),
         child: Column(
           children: [
@@ -195,24 +245,30 @@ class _CanvasPageState extends State<CanvasPage> {
         onTap: () => _selectPen(preset.color, preset.width, presetIndex: index),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          width: 42,
-          height: 42,
+          width: 44,
+          height: 44,
           decoration: BoxDecoration(
             color: selected
                 ? const Color(0xFF315FBE)
                 : Colors.white.withValues(alpha: .05),
             borderRadius: BorderRadius.circular(13),
           ),
-          child: Center(
-            child: Container(
-              width: 23,
-              height: 23,
-              decoration: BoxDecoration(
-                color: preset.color,
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white24),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Icon(preset.icon, size: 18, color: preset.color),
+              Positioned(
+                bottom: 6,
+                child: Container(
+                  width: 18,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: preset.color,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -277,7 +333,7 @@ class _CanvasPageState extends State<CanvasPage> {
           child: Container(
             width: width.clamp(2, 12),
             height: width.clamp(2, 12),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.white70,
               shape: BoxShape.circle,
             ),
