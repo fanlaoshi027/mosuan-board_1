@@ -21,11 +21,12 @@ class _InkStroke {
   final List<_InkPoint> points;
 }
 
-/// Minimal low-latency ink surface.
+/// Direct live ink surface.
 ///
-/// Live input deliberately keeps the geometry sparse. Pointer events can be
-/// much denser than the display refresh rate, so we avoid repainting for tiny
-/// movements that cannot materially change the rasterized stroke.
+/// The live stroke intentionally uses StatefulWidget repainting rather than
+/// relying on a repaint Listenable plus a RepaintBoundary. This keeps the
+/// input-to-paint path explicit and, more importantly, guarantees that every
+/// accepted pointer sample can invalidate the visible stroke immediately.
 class RawInkCanvas extends StatefulWidget {
   const RawInkCanvas({super.key, required this.color, required this.width, this.onSample, this.backgroundColor = const Color(0xFFF9F9F7)});
   final Color color;
@@ -38,39 +39,29 @@ class RawInkCanvas extends StatefulWidget {
 }
 
 class RawInkCanvasState extends State<RawInkCanvas> {
-  final ValueNotifier<int> _historyRevision = ValueNotifier<int>(0);
-  final ValueNotifier<int> _liveRevision = ValueNotifier<int>(0);
   final List<_InkStroke> _strokes = <_InkStroke>[];
   final List<_InkStroke> _redo = <_InkStroke>[];
   _InkStroke? _current;
   int? _activePointer;
 
-  @override
-  void dispose() {
-    _historyRevision.dispose();
-    _liveRevision.dispose();
-    super.dispose();
-  }
-
   void undo() {
     if (_strokes.isEmpty) return;
-    _redo.add(_strokes.removeLast());
-    _historyRevision.value++;
+    setState(() => _redo.add(_strokes.removeLast()));
   }
 
   void redo() {
     if (_redo.isEmpty) return;
-    _strokes.add(_redo.removeLast());
-    _historyRevision.value++;
+    setState(() => _strokes.add(_redo.removeLast()));
   }
 
   void clear() {
     if (_strokes.isEmpty && _current == null) return;
-    _strokes.clear();
-    _redo.clear();
-    _current = null;
-    _historyRevision.value++;
-    _liveRevision.value++;
+    setState(() {
+      _strokes.clear();
+      _redo.clear();
+      _current = null;
+      _activePointer = null;
+    });
   }
 
   bool _accepts(PointerEvent event) =>
@@ -92,8 +83,9 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     if (!_accepts(event)) return;
     _activePointer = event.pointer;
     _redo.clear();
-    _current = _InkStroke(<_InkPoint>[_InkPoint(event.localPosition, _normalize(event))]);
-    _liveRevision.value++;
+    setState(() {
+      _current = _InkStroke(<_InkPoint>[_InkPoint(event.localPosition, _normalize(event))]);
+    });
     _report(event);
   }
 
@@ -101,18 +93,21 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     if (event.pointer != _activePointer || _current == null) return;
     final points = _current!.points;
     final next = event.localPosition;
+    final pressure = _normalize(event);
 
-    // macOS can deliver considerably more pointer samples than one display
-    // frame. Keeping sub-pixel geometry makes the live painter repeatedly
-    // walk a long list without adding visible information. 1.4 px is still
-    // fine enough for normal handwriting while cutting the live workload.
-    if (points.isNotEmpty && (next - points.last.position).distance < 1.4) {
-      _report(event);
-      return;
+    // Do not discard fast-input samples. The display can decide how much to
+    // rasterize, but the input path must stay lossless for responsive ink.
+    if (points.isNotEmpty && (next - points.last.position).distance < 0.25) {
+      // Still retain pressure changes at the same coordinate so a force change
+      // is visible instead of being silently flattened.
+      if ((pressure - points.last.pressure).abs() < 0.005) {
+        _report(event);
+        return;
+      }
     }
 
-    points.add(_InkPoint(next, _normalize(event)));
-    _liveRevision.value++;
+    points.add(_InkPoint(next, pressure));
+    setState(() {});
     _report(event);
   }
 
@@ -120,12 +115,15 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     if (event.pointer != _activePointer) return;
     final stroke = _current;
     if (stroke != null && stroke.points.isNotEmpty) {
-      _strokes.add(stroke);
-      _historyRevision.value++;
+      setState(() {
+        _strokes.add(stroke);
+        _current = null;
+        _activePointer = null;
+      });
+    } else {
+      _activePointer = null;
     }
-    _current = null;
-    _activePointer = null;
-    _liveRevision.value++;
+    _report(event);
   }
 
   double _normalize(PointerEvent event) {
@@ -144,30 +142,19 @@ class RawInkCanvasState extends State<RawInkCanvas> {
         onPointerMove: _move,
         onPointerUp: _finish,
         onPointerCancel: _finish,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            RepaintBoundary(
-              child: CustomPaint(
-                painter: _HistoryInkPainter(revision: _historyRevision, strokes: _strokes, color: widget.color, width: widget.width),
-              ),
-            ),
-            RepaintBoundary(
-              child: CustomPaint(
-                painter: _LiveInkPainter(revision: _liveRevision, stroke: _current, color: widget.color, width: widget.width),
-              ),
-            ),
-          ],
+        child: CustomPaint(
+          painter: _InkPainter(strokes: _strokes, current: _current, color: widget.color, width: widget.width),
+          size: Size.infinite,
         ),
       ),
     );
   }
 }
 
-class _HistoryInkPainter extends CustomPainter {
-  _HistoryInkPainter({required this.revision, required this.strokes, required this.color, required this.width}) : super(repaint: revision);
-  final ValueNotifier<int> revision;
+class _InkPainter extends CustomPainter {
+  const _InkPainter({required this.strokes, required this.current, required this.color, required this.width});
   final List<_InkStroke> strokes;
+  final _InkStroke? current;
   final Color color;
   final double width;
 
@@ -176,6 +163,7 @@ class _HistoryInkPainter extends CustomPainter {
     for (final stroke in strokes) {
       _paintStroke(canvas, stroke);
     }
+    if (current != null) _paintStroke(canvas, current!);
   }
 
   void _paintStroke(Canvas canvas, _InkStroke stroke) {
@@ -188,75 +176,15 @@ class _HistoryInkPainter extends CustomPainter {
       return;
     }
 
-    if (_pressureVaries(points)) {
-      for (var i = 1; i < points.length; i++) {
-        final a = points[i - 1];
-        final b = points[i];
-        canvas.drawLine(a.position, b.position, _paintFor((a.pressure + b.pressure) / 2));
-      }
-      return;
-    }
-
-    final path = Path()..moveTo(points.first.position.dx, points.first.position.dy);
-    for (var i = 1; i < points.length; i++) {
-      path.lineTo(points[i].position.dx, points[i].position.dy);
-    }
-    canvas.drawPath(path, _paintFor(points.first.pressure));
-  }
-
-  bool _pressureVaries(List<_InkPoint> points) {
-    final first = points.first.pressure;
-    for (var i = 1; i < points.length; i++) {
-      if ((points[i].pressure - first).abs() > 0.01) return true;
-    }
-    return false;
-  }
-
-  Paint _paintFor(double pressure) {
-    final p = pressure.clamp(0.0, 1.0);
-    return Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..isAntiAlias = true
-      ..strokeWidth = (width * (0.58 + p * 0.92)).clamp(0.8, width * 1.5);
-  }
-
-  @override
-  bool shouldRepaint(covariant _HistoryInkPainter oldDelegate) => oldDelegate.color != color || oldDelegate.width != width;
-}
-
-class _LiveInkPainter extends CustomPainter {
-  _LiveInkPainter({required this.revision, required this.stroke, required this.color, required this.width}) : super(repaint: revision);
-  final ValueNotifier<int> revision;
-  final _InkStroke? stroke;
-  final Color color;
-  final double width;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final points = stroke?.points;
-    if (points == null || points.isEmpty) return;
-    if (points.length == 1) {
-      final paint = _paintFor(points.first.pressure);
-      canvas.drawCircle(points.first.position, paint.strokeWidth / 2, paint);
-      return;
-    }
-
-    // A small fixed set of pressure bands keeps the number of live draw calls
-    // bounded while preserving visible pressure changes.
-    final paths = <int, Path>{};
+    // Segment-by-segment rendering is intentionally simple here. It avoids
+    // reconstructing pressure-band paths and makes every new segment visible
+    // immediately. Once latency is proven, this can be replaced by a cached
+    // raster path without changing the input model.
     for (var i = 1; i < points.length; i++) {
       final a = points[i - 1];
       final b = points[i];
-      final band = (((a.pressure + b.pressure) * 0.5) * 7).round().clamp(0, 7);
-      final path = paths.putIfAbsent(band, () => Path()..moveTo(a.position.dx, a.position.dy));
-      path.lineTo(b.position.dx, b.position.dy);
-    }
-    for (final entry in paths.entries) {
-      final pressure = (entry.key / 7.0).clamp(0.0, 1.0);
-      canvas.drawPath(entry.value, _paintFor(pressure));
+      final pressure = (a.pressure + b.pressure) * 0.5;
+      canvas.drawLine(a.position, b.position, _paintFor(pressure));
     }
   }
 
@@ -272,5 +200,9 @@ class _LiveInkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _LiveInkPainter oldDelegate) => oldDelegate.color != color || oldDelegate.width != width;
+  bool shouldRepaint(covariant _InkPainter oldDelegate) =>
+      oldDelegate.strokes != strokes ||
+      oldDelegate.current != current ||
+      oldDelegate.color != color ||
+      oldDelegate.width != width;
 }
