@@ -27,6 +27,9 @@ jobs:
       - name: Generate desktop platform projects
         run: flutter create --platforms=linux .
 
+      - name: Remove generated sample test
+        run: rm -rf test
+
       - name: Pub get
         run: flutter pub get
 
