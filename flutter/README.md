@@ -23,7 +23,7 @@
 
 ## 核心底座
 
-当前采用 `fluera_canvas`。它提供 macOS / Windows 支持、pressure-aware stylus input、平滑处理、橡皮、选择、无限缩放/平移、持久化基础能力以及较完整的 Flutter 桌面输入处理。citeturn2search0turn3search2
+当前采用 `fluera_canvas`。它提供 macOS / Windows 支持、pressure-aware stylus input、平滑处理、橡皮、选择、无限缩放/平移、持久化基础能力以及较完整的 Flutter 桌面输入处理。
 
 选择它的原因是：A 路径的重点是**开发效率 + 尽快验证真实手写体验**，而不是第一天自己从 PointerEvent、Path、缓存、命中测试全部造轮子。
 
