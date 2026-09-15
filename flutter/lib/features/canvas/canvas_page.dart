@@ -54,12 +54,12 @@ class _CanvasPageState extends State<CanvasPage> {
 
   void _observePointer(PointerEvent event) {
     if (event is PointerMoveEvent || event is PointerDownEvent) {
+      // Keep the diagnostic observer completely out of the hot rebuild path.
+      // Rebuilding the parent Stack for every stylus sample can add visible
+      // latency even though FlueraCanvas itself is receiving the raw events.
       _sampleCount++;
-      if (!mounted) return;
-      setState(() {
-        _inputKind = event.kind;
-        _pressure = event.pressure.isFinite ? event.pressure : 0.0;
-      });
+      _inputKind = event.kind;
+      _pressure = event.pressure.isFinite ? event.pressure : 0.0;
     }
   }
 
