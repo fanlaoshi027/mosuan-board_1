@@ -1,0 +1,51 @@
+name: Sync standalone source snapshot
+
+on:
+  push:
+    branches:
+      - mosuan-board-dev
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: !contains(github.event.head_commit.message, 'chore: sync standalone source snapshot')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout standalone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Copy source snapshot from Mosuan Board development branch
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/mosuan-source
+          git clone --depth 1 --branch mosuan-board-dev https://github.com/fanlaoshi027/math-learning-platform.git /tmp/mosuan-source
+
+          rm -rf Sources/MosuanBoard
+          mkdir -p Sources
+          cp -R /tmp/mosuan-source/Sources/MosuanBoard Sources/
+
+          rm -f Sources/MosuanBoard/BoardScreen.swift
+          rm -f Sources/MosuanBoard/BoardScreenFixed.swift
+          rm -f Sources/MosuanBoard/BoardScreenV2.swift
+          rm -f Sources/MosuanBoard/PDFTeachingWorkspace.swift
+          rm -f Sources/MosuanBoard/SMART_LINE_AND_ERASER.md
+          rm -f Sources/MosuanBoard/Metal/InkRendererFixed.swift
+          rm -f Sources/MosuanBoard/Core/GraphicObjectStoreFixed.swift
+          rm -f Sources/MosuanBoard/Core/GraphicObjectStoreV2.swift
+          rm -f Sources/MosuanBoard/Core/GraphicObjectStoreV3.swift
+          rm -rf Sources/MosuanBoard/Platform/iPadOS
+
+          rm -rf scripts
+          cp -R /tmp/mosuan-source/scripts .
+          mkdir -p Resources
+          cp /tmp/mosuan-source/Resources/AppIcon.png Resources/AppIcon.png
+
+          git add Sources/MosuanBoard scripts Resources/AppIcon.png
+          git diff --cached --quiet && { echo 'No source changes to sync'; exit 0; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: sync standalone source snapshot'
+          git push origin HEAD:mosuan-board-dev
