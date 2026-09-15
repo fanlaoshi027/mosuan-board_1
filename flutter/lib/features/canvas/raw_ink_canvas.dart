@@ -23,8 +23,9 @@ class _InkStroke {
 
 /// Minimal low-latency ink surface.
 ///
-/// Live input deliberately keeps the geometry cheap: very close samples are
-/// coalesced, while pressure is still rendered in small pressure bands.
+/// Live input deliberately keeps the geometry sparse. Pointer events can be
+/// much denser than the display refresh rate, so we avoid repainting for tiny
+/// movements that cannot materially change the rasterized stroke.
 class RawInkCanvas extends StatefulWidget {
   const RawInkCanvas({super.key, required this.color, required this.width, this.onSample, this.backgroundColor = const Color(0xFFF9F9F7)});
   final Color color;
@@ -100,12 +101,16 @@ class RawInkCanvasState extends State<RawInkCanvas> {
     if (event.pointer != _activePointer || _current == null) return;
     final points = _current!.points;
     final next = event.localPosition;
-    // Do not flood the live painter with sub-pixel samples. Keep every sample
-    // for the diagnostic stream, but only store geometry that moves the stroke.
-    if (points.isNotEmpty && (next - points.last.position).distance < 0.7) {
+
+    // macOS can deliver considerably more pointer samples than one display
+    // frame. Keeping sub-pixel geometry makes the live painter repeatedly
+    // walk a long list without adding visible information. 1.4 px is still
+    // fine enough for normal handwriting while cutting the live workload.
+    if (points.isNotEmpty && (next - points.last.position).distance < 1.4) {
       _report(event);
       return;
     }
+
     points.add(_InkPoint(next, _normalize(event)));
     _liveRevision.value++;
     _report(event);
@@ -178,7 +183,8 @@ class _HistoryInkPainter extends CustomPainter {
     if (points.isEmpty) return;
     if (points.length == 1) {
       final p = points.first;
-      canvas.drawCircle(p.position, _paintFor(p.pressure).strokeWidth / 2, _paintFor(p.pressure));
+      final paint = _paintFor(p.pressure);
+      canvas.drawCircle(p.position, paint.strokeWidth / 2, paint);
       return;
     }
 
@@ -238,9 +244,8 @@ class _LiveInkPainter extends CustomPainter {
       return;
     }
 
-    // Keep the live path cheap, but do not freeze its width at the first
-    // pressure value. Consecutive points are grouped into coarse pressure
-    // bands, so pressure changes require only a handful of drawPath calls.
+    // A small fixed set of pressure bands keeps the number of live draw calls
+    // bounded while preserving visible pressure changes.
     final paths = <int, Path>{};
     for (var i = 1; i < points.length; i++) {
       final a = points[i - 1];
