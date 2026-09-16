@@ -53,6 +53,88 @@ jobs:
         run: flutter config --enable-macos-desktop
       - name: Generate macOS project
         run: flutter create --platforms=macos .
+      - name: Install native macOS pressure bridge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app_delegate = Path('macos/Runner/AppDelegate.swift')
+          text = app_delegate.read_text()
+          marker = 'RegisterGeneratedPlugins(registry: flutterViewController)'
+          attach = marker + '\n    NativePressureBridge.shared.attach(to: flutterViewController.engine.binaryMessenger)'
+          if marker not in text:
+              raise SystemExit('AppDelegate marker not found; refusing to build without the pressure bridge.')
+          text = text.replace(marker, attach, 1)
+          bridge = r'''
+
+          // Pressure-only bridge for drawing tablets on macOS.
+          // AppKit documents pressure on tablet-point events and pressure events.
+          // We forward only the normalized pressure value; Flutter remains responsible
+          // for positions and stroke rendering.
+          final class NativePressureBridge: NSObject, FlutterStreamHandler {
+            static let shared = NativePressureBridge()
+
+            private var sink: FlutterEventSink?
+            private var monitor: Any?
+
+            func attach(to messenger: FlutterBinaryMessenger) {
+              let channel = FlutterEventChannel(
+                name: "mosuan/native_pressure",
+                binaryMessenger: messenger
+              )
+              channel.setStreamHandler(self)
+            }
+
+            func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+              sink = events
+              startMonitoring()
+              return nil
+            }
+
+            func onCancel(withArguments arguments: Any?) -> FlutterError? {
+              stopMonitoring()
+              sink = nil
+              return nil
+            }
+
+            private func startMonitoring() {
+              guard monitor == nil else { return }
+              let mask: NSEvent.EventTypeMask = [.tabletPoint, .pressure, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+              monitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+                self?.handle(event)
+                return event
+              }
+            }
+
+            private func stopMonitoring() {
+              if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+              }
+            }
+
+            private func handle(_ event: NSEvent) {
+              let isTabletType = event.type == .tabletPoint || event.type == .pressure
+              let isTabletMouse = event.subtype == .tabletPoint
+              let isTabletEvent = isTabletType || isTabletMouse
+
+              if event.type == .leftMouseUp && isTabletMouse {
+                sink?(["pressure": 0.0])
+                return
+              }
+
+              guard isTabletEvent else { return }
+
+              let pressure = min(max(Double(event.pressure), 0.0), 1.0)
+              sink?(["pressure": pressure])
+            }
+          }
+          '''
+          if 'final class NativePressureBridge:' not in text:
+              text += bridge
+          app_delegate.write_text(text)
+          PY
       - name: Pub get
         run: flutter pub get
       - name: Build macOS
