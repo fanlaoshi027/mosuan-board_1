@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import 'native_pressure.dart';
+
 class RawInkSample {
   const RawInkSample({required this.kind, required this.pressure, required this.pressureMin, required this.pressureMax, required this.timeStamp});
   final PointerDeviceKind kind;
@@ -45,6 +47,12 @@ class RawInkCanvasState extends State<RawInkCanvas> {
   Size _cachedSize = Size.zero;
 
   @override
+  void initState() {
+    super.initState();
+    NativePressureFeed.ensureStarted();
+  }
+
+  @override
   void dispose() {
     _liveRevision.dispose();
     _cachedPicture?.dispose();
@@ -84,7 +92,7 @@ class RawInkCanvasState extends State<RawInkCanvas> {
   void _report(PointerEvent event) {
     widget.onSample?.call(RawInkSample(
       kind: event.kind,
-      pressure: event.pressure,
+      pressure: _normalize(event),
       pressureMin: event.pressureMin,
       pressureMax: event.pressureMax,
       timeStamp: event.timeStamp,
@@ -132,6 +140,16 @@ class RawInkCanvasState extends State<RawInkCanvas> {
   }
 
   double _normalize(PointerEvent event) {
+    // On macOS, some tablet drivers expose real AppKit pressure while the
+    // Flutter PointerEvent remains effectively constant. Prefer the native
+    // value for stylus events when it is fresh; fall back to Flutter pressure
+    // everywhere else so mouse drawing remains unchanged.
+    if ((event.kind == PointerDeviceKind.stylus ||
+            event.kind == PointerDeviceKind.invertedStylus) &&
+        NativePressureFeed.hasRecentValue) {
+      return NativePressureFeed.latest.clamp(0.0, 1.0);
+    }
+
     final range = event.pressureMax - event.pressureMin;
     if (range <= 0.0001) return event.pressure.clamp(0.0, 1.0);
     return ((event.pressure - event.pressureMin) / range).clamp(0.0, 1.0);
