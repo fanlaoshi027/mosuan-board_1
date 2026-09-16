@@ -7,7 +7,6 @@ on:
     branches: [flutter-a-dev]
   workflow_dispatch:
 
-# Keep desktop CI active for direct branch development and DMG testing.
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -58,31 +57,33 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          app_delegate = Path('macos/Runner/AppDelegate.swift')
-          text = app_delegate.read_text()
-          marker = 'RegisterGeneratedPlugins(registry: flutterViewController)'
-          attach = marker + '\n    NativePressureBridge.shared.attach(to: flutterViewController.engine.binaryMessenger)'
-          if marker not in text:
-              raise SystemExit('AppDelegate marker not found; refusing to build without the pressure bridge.')
-          text = text.replace(marker, attach, 1)
+          path = Path('macos/Runner/AppDelegate.swift')
+          text = path.read_text()
+
+          # Flutter's generated AppDelegate has changed its plugin-registration
+          # spelling across releases. Match either form instead of depending on
+          # one historical marker.
+          markers = [
+              'RegisterGeneratedPlugins(registry: flutterViewController)',
+              'GeneratedPluginRegistrant.register(with: flutterViewController)',
+          ]
+          marker = next((m for m in markers if m in text), None)
+          if marker is None:
+              raise SystemExit('Could not locate Flutter plugin registration in AppDelegate.swift')
+
           bridge = r'''
 
-          // Pressure-only bridge for drawing tablets on macOS.
-          // AppKit documents pressure on tablet-point events and pressure events.
-          // We forward only the normalized pressure value; Flutter remains responsible
-          // for positions and stroke rendering.
+          // Pressure-only bridge. AppKit's NSEvent carries normalized pressure
+          // for tablet/pressure events; positions stay in Flutter's pointer path.
           final class NativePressureBridge: NSObject, FlutterStreamHandler {
             static let shared = NativePressureBridge()
-
             private var sink: FlutterEventSink?
             private var monitor: Any?
 
             func attach(to messenger: FlutterBinaryMessenger) {
-              let channel = FlutterEventChannel(
-                name: "mosuan/native_pressure",
-                binaryMessenger: messenger
-              )
+              let channel = FlutterEventChannel(name: "mosuan/native_pressure", binaryMessenger: messenger)
               channel.setStreamHandler(self)
             }
 
@@ -100,40 +101,32 @@ jobs:
 
             private func startMonitoring() {
               guard monitor == nil else { return }
-              let mask: NSEvent.EventTypeMask = [.tabletPoint, .pressure, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
-              monitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+              monitor = NSEvent.addLocalMonitorForEvents(matching: [.tabletPoint, .pressure]) { [weak self] event in
                 self?.handle(event)
                 return event
               }
             }
 
             private func stopMonitoring() {
-              if let monitor {
+              if let monitor = monitor {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
               }
             }
 
             private func handle(_ event: NSEvent) {
-              let isTabletType = event.type == .tabletPoint || event.type == .pressure
-              let isTabletMouse = event.subtype == .tabletPoint
-              let isTabletEvent = isTabletType || isTabletMouse
-
-              if event.type == .leftMouseUp && isTabletMouse {
-                sink?(["pressure": 0.0])
-                return
-              }
-
-              guard isTabletEvent else { return }
-
+              guard event.type == .tabletPoint || event.type == .pressure else { return }
               let pressure = min(max(Double(event.pressure), 0.0), 1.0)
               sink?(["pressure": pressure])
             }
           }
           '''
+
+          attach = marker + '\n              NativePressureBridge.shared.attach(to: flutterViewController.engine.binaryMessenger)'
+          text = text.replace(marker, attach, 1)
           if 'final class NativePressureBridge:' not in text:
               text += bridge
-          app_delegate.write_text(text)
+          path.write_text(text)
           PY
       - name: Pub get
         run: flutter pub get
